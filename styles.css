@@ -1,0 +1,60 @@
+/* YouTube Picture-in-Picture Extension Styles */
+
+/* Content Script Styles */
+.pipcorn-button {
+  background: none;
+  border: none;
+  color: white;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 8px 12px;
+  border-radius: 4px;
+  font-size: 14px;
+  font-weight: 500;
+  transition: all 0.2s ease;
+  opacity: 0.8;
+  margin-left: 8px;
+}
+
+.pipcorn-button:hover {
+  background-color: rgba(255, 255, 255, 0.1);
+  opacity: 1;
+}
+
+.pipcorn-button.active {
+  background-color: rgba(255, 0, 0, 0.2);
+  color: #ff4444;
+  opacity: 1;
+}
+
+.pipcorn-button svg {
+  width: 20px;
+  height: 20px;
+}
+
+.pipcorn-notification {
+  position: fixed;
+  top: 20px;
+  right: 20px;
+  background: rgba(0, 0, 0, 0.9);
+  color: white;
+  padding: 12px 16px;
+  border-radius: 6px;
+  font-size: 14px;
+  z-index: 10000;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+  animation: slideIn 0.3s ease;
+}
+
+@keyframes slideIn {
+  from {
+    transform: translateX(100%);
+    opacity: 0;
+  }
+  to {
+    transform: translateX(0);
+    opacity: 1;
+  }
+}
