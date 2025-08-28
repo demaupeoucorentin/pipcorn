@@ -40,8 +40,9 @@ class YouTubePiPController {
   private waitForVideo(callback: () => void): void {
     const checkForVideo = () => {
       const video = document.querySelector('video') as HTMLVideoElement;
-      if (video && video.src) {
+      if (video && video.src && video.readyState >= 1) {
         this.pipManager.currentVideo = video;
+        console.log('Video found and ready:', video.src);
         callback();
       } else {
         setTimeout(checkForVideo, 500);
@@ -138,6 +139,33 @@ class YouTubePiPController {
     this.pipManager.currentVideo.addEventListener('loadedmetadata', () => {
       this.updatePiPIfActive();
     });
+
+    // Monitor video playback state for automatic PiP
+    this.pipManager.currentVideo.addEventListener('play', () => {
+      setTimeout(() => this.reportVideoState(true), 100);
+    });
+
+    this.pipManager.currentVideo.addEventListener('pause', () => {
+      setTimeout(() => this.reportVideoState(false), 100);
+    });
+
+    this.pipManager.currentVideo.addEventListener('ended', () => {
+      this.reportVideoState(false);
+    });
+
+    // Report initial state after video is fully loaded
+    this.pipManager.currentVideo.addEventListener('canplay', () => {
+      setTimeout(() => {
+        this.reportVideoState(!this.pipManager.currentVideo?.paused);
+      }, 500);
+    });
+
+    // Also report state when metadata is loaded
+    this.pipManager.currentVideo.addEventListener('loadedmetadata', () => {
+      setTimeout(() => {
+        this.reportVideoState(!this.pipManager.currentVideo?.paused);
+      }, 300);
+    });
   }
 
   public async togglePictureInPicture(): Promise<void> {
@@ -205,6 +233,76 @@ class YouTubePiPController {
     }, 3000);
   }
 
+  private reportVideoState(isPlaying: boolean): void {
+    // Report video playing state to background script for automatic PiP management
+    try {
+      const videoInfo = {
+        action: 'video-playing-status',
+        isPlaying: isPlaying,
+        videoUrl: window.location.href,
+        pipActive: this.pipManager.isActive,
+        videoReady: this.pipManager.currentVideo ? this.pipManager.currentVideo.readyState >= 2 : false,
+        videoDuration: this.pipManager.currentVideo?.duration || 0
+      };
+      
+      chrome.runtime.sendMessage(videoInfo);
+      console.log('Reported video state:', videoInfo);
+    } catch (error) {
+      console.error('Failed to report video state:', error);
+    }
+  }
+
+  public async activateAutoPiP(): Promise<boolean> {
+    // Automatically activate PiP (called when switching away from tab)
+    if (!this.pipManager.currentVideo || this.pipManager.isActive) {
+      return false;
+    }
+
+    // Only activate if video is playing and has loaded
+    if (this.pipManager.currentVideo.paused || 
+        this.pipManager.currentVideo.readyState < 2 ||
+        this.pipManager.currentVideo.duration === 0) {
+      console.log('Video not ready for PiP:', {
+        paused: this.pipManager.currentVideo.paused,
+        readyState: this.pipManager.currentVideo.readyState,
+        duration: this.pipManager.currentVideo.duration
+      });
+      return false;
+    }
+
+    // Check if PiP is supported and allowed
+    if (!document.pictureInPictureEnabled) {
+      console.log('Picture-in-Picture is not enabled');
+      return false;
+    }
+
+    try {
+      // Ensure video is in view and properly initialized
+      await new Promise(resolve => setTimeout(resolve, 100));
+      await this.pipManager.currentVideo.requestPictureInPicture();
+      console.log('Auto PiP activated successfully');
+      return true;
+    } catch (error) {
+      console.log('Auto PiP activation failed (this is normal if user gesture required):', error);
+      return false;
+    }
+  }
+
+  public async deactivateAutoPiP(): Promise<boolean> {
+    // Automatically deactivate PiP (called when switching back to tab)
+    if (!this.pipManager.isActive) {
+      return false;
+    }
+
+    try {
+      await document.exitPictureInPicture();
+      return true;
+    } catch (error) {
+      console.error('Auto PiP deactivation failed:', error);
+      return false;
+    }
+  }
+
   private observeUrlChanges(): void {
     let currentUrl = location.href;
     
@@ -244,6 +342,16 @@ class YouTubePiPController {
             isYouTube: true 
           });
           break;
+        case 'auto-activate-pip':
+          controller.activateAutoPiP().then(success => {
+            sendResponse({ success });
+          });
+          return true; // Keep the message channel open for async response
+        case 'auto-deactivate-pip':
+          controller.deactivateAutoPiP().then(success => {
+            sendResponse({ success });
+          });
+          return true; // Keep the message channel open for async response
         case 'ping':
           sendResponse({ pong: true });
           break;
